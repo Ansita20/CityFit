@@ -1,3 +1,4 @@
+import "@/lib/env.server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import type { JobRow, Profile } from "./matching";

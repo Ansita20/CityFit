@@ -14,7 +14,7 @@ import { ReportView } from "@/components/ReportView";
 import { generateReport } from "@/lib/report.functions";
 import { getMarketOverview, type MarketOverview } from "@/lib/market.functions";
 import { supabase } from "@/integrations/supabase/client";
-import { FileUp, Loader2, LogIn, LogOut, UserPlus } from "lucide-react";
+import { FileUp, Loader2, LogIn, LogOut, Eye, EyeOff, UserPlus } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -61,11 +61,13 @@ function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [signUpEmail, setSignUpEmail] = useState("");
+  const [signUpPassword, setSignUpPassword] = useState("");
+  const [signUpConfirmPassword, setSignUpConfirmPassword] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -121,6 +123,61 @@ function Home() {
   });
 
   const result = mutation.data;
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) {
+      toast.error("Please fill in all fields.");
+      return;
+    }
+    setAuthBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password: authPassword,
+    });
+    setAuthBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Signed in successfully.");
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signUpEmail || !signUpPassword || !signUpConfirmPassword) {
+      toast.error("Please fill in all fields.");
+      return;
+    }
+    if (signUpPassword !== signUpConfirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    if (signUpPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    setAuthBusy(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: signUpEmail,
+      password: signUpPassword,
+    });
+    setAuthBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    
+    if (data.session) {
+      toast.success("Account created and signed in successfully!");
+    } else {
+      toast.success("Registration successful! Please check your email to confirm your account.");
+    }
+    
+    setSignUpEmail("");
+    setSignUpPassword("");
+    setSignUpConfirmPassword("");
+  };
 
   return (
     <main className="min-h-screen bg-hero">
@@ -186,134 +243,180 @@ function Home() {
           </div>
 
           <div className="panel p-6 sm:p-8" id="auth">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-2xl font-semibold">Account access</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Sign in to save reports, or create an account to get started.
+                  Sign in or create an account to save and access your reports.
                 </p>
               </div>
-              <div className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                {sessionLoading ? "Checking session..." : accountEmail ? "Signed in" : "Signed out"}
+              <div className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground shrink-0">
+                {sessionLoading ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="size-3 animate-spin" /> Checking...
+                  </span>
+                ) : accountEmail ? (
+                  "Signed in"
+                ) : (
+                  "Signed out"
+                )}
               </div>
             </div>
 
             {accountEmail ? (
-              <div className="mt-6 rounded-2xl border border-border bg-surface/60 p-4 text-sm text-muted-foreground">
-                Signed in as <span className="font-medium text-foreground">{accountEmail}</span>.
-                Reports will be saved to this account.
+              <div className="rounded-2xl border border-border bg-surface/60 p-5 text-sm text-muted-foreground">
+                <div className="flex items-center gap-3">
+                  <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
+                    {accountEmail.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">Logged In As</p>
+                    <p className="font-semibold text-foreground">{accountEmail}</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs leading-relaxed">
+                  Your customized job market reports will be automatically saved and linked to this account.
+                </p>
               </div>
             ) : (
-              <Tabs value={authMode} onValueChange={(value) => setAuthMode(value as "sign-in" | "sign-up")} className="mt-6">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="sign-in">Sign in</TabsTrigger>
-                  <TabsTrigger value="sign-up">Sign up</TabsTrigger>
+              <Tabs defaultValue="signin" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="signin">Sign In</TabsTrigger>
+                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
                 </TabsList>
-                <TabsContent value="sign-in" className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="auth-email-signin">Email</Label>
-                    <Input
-                      id="auth-email-signin"
-                      type="email"
-                      autoComplete="email"
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      placeholder="you@example.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="auth-password-signin">Password</Label>
-                    <Input
-                      id="auth-password-signin"
-                      type="password"
-                      autoComplete="current-password"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      placeholder="••••••••"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    className="w-full"
-                    size="lg"
-                    disabled={authBusy || !authEmail || !authPassword}
-                    onClick={async () => {
-                      setAuthBusy(true);
-                      setAuthMessage(null);
-                      const { error } = await supabase.auth.signInWithPassword({
-                        email: authEmail,
-                        password: authPassword,
-                      });
-                      setAuthBusy(false);
-                      if (error) {
-                        toast.error(error.message);
-                        return;
-                      }
-                      toast.success("Signed in successfully.");
-                    }}
-                  >
-                    {authBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <LogIn className="mr-2 size-4" />}
-                    Sign in
-                  </Button>
+                
+                <TabsContent value="signin">
+                  <form onSubmit={handleSignIn} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="auth-email-signin">Email address</Label>
+                      <Input
+                        id="auth-email-signin"
+                        type="email"
+                        autoComplete="email"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="bg-surface/50"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="auth-password-signin">Password</Label>
+                      </div>
+                      <div className="relative">
+                        <Input
+                          id="auth-password-signin"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
+                          value={authPassword}
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="bg-surface/50 pr-10"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full mt-2"
+                      size="lg"
+                      disabled={authBusy || !authEmail || !authPassword}
+                    >
+                      {authBusy ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Signing in...
+                        </>
+                      ) : (
+                        <>
+                          <LogIn className="mr-2 size-4" />
+                          Sign in
+                        </>
+                      )}
+                    </Button>
+                  </form>
                 </TabsContent>
-                <TabsContent value="sign-up" className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="auth-email-signup">Email</Label>
-                    <Input
-                      id="auth-email-signup"
-                      type="email"
-                      autoComplete="email"
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      placeholder="you@example.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="auth-password-signup">Password</Label>
-                    <Input
-                      id="auth-password-signup"
-                      type="password"
-                      autoComplete="new-password"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      placeholder="Create a password"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    className="w-full"
-                    size="lg"
-                    disabled={authBusy || !authEmail || !authPassword}
-                    onClick={async () => {
-                      setAuthBusy(true);
-                      setAuthMessage(null);
-                      const { data, error } = await supabase.auth.signUp({
-                        email: authEmail,
-                        password: authPassword,
-                      });
-                      setAuthBusy(false);
-                      if (error) {
-                        toast.error(error.message);
-                        return;
-                      }
-                      if (data.session) {
-                        toast.success("Account created and signed in.");
-                        return;
-                      }
-                      setAuthMessage("Account created. Check your email to confirm the account, then sign in.");
-                      toast.success("Account created. Check your email to confirm it.");
-                    }}
-                  >
-                    {authBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <UserPlus className="mr-2 size-4" />}
-                    Create account
-                  </Button>
+
+                <TabsContent value="signup">
+                  <form onSubmit={handleSignUp} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="auth-email-signup">Email address</Label>
+                      <Input
+                        id="auth-email-signup"
+                        type="email"
+                        autoComplete="email"
+                        value={signUpEmail}
+                        onChange={(e) => setSignUpEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="bg-surface/50"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="auth-password-signup">Password (min. 6 chars)</Label>
+                      <div className="relative">
+                        <Input
+                          id="auth-password-signup"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          value={signUpPassword}
+                          onChange={(e) => setSignUpPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="bg-surface/50 pr-10"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="auth-confirm-password-signup">Confirm password</Label>
+                      <Input
+                        id="auth-confirm-password-signup"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={signUpConfirmPassword}
+                        onChange={(e) => setSignUpConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="bg-surface/50"
+                        required
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full mt-2"
+                      size="lg"
+                      disabled={authBusy || !signUpEmail || !signUpPassword || !signUpConfirmPassword}
+                    >
+                      {authBusy ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Creating account...
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="mr-2 size-4" />
+                          Sign up
+                        </>
+                      )}
+                    </Button>
+                  </form>
                 </TabsContent>
               </Tabs>
             )}
-
-            {authMessage ? (
-              <p className="mt-4 text-sm text-muted-foreground">{authMessage}</p>
-            ) : null}
           </div>
 
           <div className="panel p-6 sm:p-8">
