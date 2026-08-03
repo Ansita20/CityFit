@@ -1,0 +1,34 @@
+name: Weekly Naukri scrape
+
+on:
+  schedule:
+    # Every Monday 01:30 UTC (07:00 IST)
+    - cron: "30 1 * * 1"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+
+      - name: Install dependencies
+        run: pip install -r scraper/requirements.txt
+
+      - name: Scrape and ingest
+        env:
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+          PAGES_PER_SEARCH: "6"
+        run: python scraper/naukri_scraper.py
