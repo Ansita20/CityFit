@@ -2,8 +2,23 @@ import "@/lib/env.server";
 import { createClient } from "@supabase/supabase-js";
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
+import { fileURLToPath } from "node:url";
 import type { Database } from "@/integrations/supabase/types";
 import type { JobRow, Profile } from "./matching";
+
+// The production bundle (.output/server/_libs/...) references its PDF.js
+// worker via a relative "./pdf.worker.mjs" path that the bundler never
+// actually copies alongside it — the worker only exists inside
+// node_modules/pdfjs-dist. Without this, PDF.js silently fails to extract
+// any text (surfacing as "We couldn't read text from that file" for every
+// PDF, even normal ones), while working fine when run directly from
+// source, where Node's own module resolution finds the real file. Resolve
+// it explicitly here so both contexts use the same real worker.
+try {
+  PDFParse.setWorker(fileURLToPath(import.meta.resolve("pdfjs-dist/build/pdf.worker.mjs")));
+} catch (error) {
+  console.error("[resume] could not resolve pdf.worker.mjs, PDF parsing may fail:", error);
+}
 
 function publicClient() {
   const url = process.env["SUPABASE_URL"]!;
