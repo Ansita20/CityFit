@@ -18,7 +18,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
           install-chromedriver: true
@@ -31,4 +32,14 @@ jobs:
           INGEST_URL: ${{ secrets.INGEST_URL }}
           INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
           PAGES_PER_SEARCH: "6"
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
         run: python scraper/naukri_scraper.py
+
+      - name: Upload scrape log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-debug
+          path: scraper/*.png
+          if-no-files-found: ignore

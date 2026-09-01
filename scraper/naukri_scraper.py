@@ -22,7 +22,9 @@ import urllib.request
 from dataclasses import dataclass, asdict, field
 
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -118,9 +120,37 @@ def build_driver() -> webdriver.Chrome:
         "user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     )
-    driver = webdriver.Chrome(options=options)
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+
+    # CI (browser-actions/setup-chrome) publishes exact binary paths. Selenium's
+    # own auto-detection is unreliable in that environment and was the cause of
+    # every scheduled run failing immediately at driver startup, so prefer the
+    # explicit paths when they're present and only fall back to Selenium
+    # Manager for local development.
+    chrome_path = os.environ.get("CHROME_PATH")
+    if chrome_path:
+        options.binary_location = chrome_path
+
+    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
+    service = Service(executable_path=chromedriver_path) if chromedriver_path else Service()
+
+    driver = webdriver.Chrome(options=options, service=service)
     driver.set_page_load_timeout(60)
     return driver
+
+
+def is_blocked(driver: webdriver.Chrome) -> bool:
+    blob = driver.page_source.lower()
+    return any(
+        marker in blob
+        for marker in (
+            "access denied",
+            "are you a robot",
+            "unusual traffic",
+            "captcha",
+        )
+    )
 
 
 def clean_city(raw: str | None) -> str | None:
@@ -191,7 +221,14 @@ def scrape_search(driver: webdriver.Chrome, keyword: str, category: str) -> list
                     (By.CSS_SELECTOR, "div.srp-jobtuple-wrapper, article.jobTuple")
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except TimeoutException:
+            if is_blocked(driver):
+                print(f"  ! {keyword} page {page}: blocked/captcha page, skipping rest of this search", file=sys.stderr)
+                driver.save_screenshot(f"scraper/blocked-{keyword}-{page}.png")
+                break
+            print(f"  ! {keyword} page {page}: no listings loaded in time", file=sys.stderr)
+            continue
+        except WebDriverException as exc:
             print(f"  ! {keyword} page {page}: {exc}", file=sys.stderr)
             continue
 
@@ -281,8 +318,16 @@ def dedupe(jobs: list[Job]) -> list[Job]:
 
 
 def push(jobs: list[Job]) -> None:
-    url = os.environ["INGEST_URL"]
-    token = os.environ["INGEST_TOKEN"]
+    url = os.environ.get("INGEST_URL")
+    token = os.environ.get("INGEST_TOKEN")
+    if not url or not token:
+        print(
+            "INGEST_URL / INGEST_TOKEN secrets are not set on this repo "
+            "(Settings -> Secrets and variables -> Actions) — scraped data "
+            "was collected but cannot be sent anywhere.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     for start in range(0, len(jobs), 500):
         chunk = [asdict(job) for job in jobs[start : start + 500]]
         request = urllib.request.Request(
@@ -296,12 +341,26 @@ def push(jobs: list[Job]) -> None:
 
 
 def main() -> int:
-    driver = build_driver()
+    try:
+        driver = build_driver()
+    except WebDriverException as exc:
+        print(f"Could not start Chrome/Chromedriver: {exc}", file=sys.stderr)
+        print(
+            "Check that CHROME_PATH / CHROMEDRIVER_PATH are set from the "
+            "browser-actions/setup-chrome step outputs in the workflow.",
+            file=sys.stderr,
+        )
+        return 1
+
     collected: list[Job] = []
     try:
         for keyword, category in SEARCHES:
             print(f"Scraping {keyword} ...")
-            found = scrape_search(driver, keyword, category)
+            try:
+                found = scrape_search(driver, keyword, category)
+            except WebDriverException as exc:
+                print(f"  ! {keyword}: {exc}", file=sys.stderr)
+                continue
             print(f"  {len(found)} listings")
             collected.extend(found)
     finally:
