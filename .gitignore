@@ -63,3 +63,8 @@ temp/
 
 # Bun lock (optional - keep only if you don't want it tracked)
 # bun.lock
+
+# Python scraper
+__pycache__/
+*.pyc
+scraper/*.png
