@@ -23,7 +23,10 @@ export const getMarketOverview = createServerFn({ method: "GET" }).handler(
     const jobs = await fetchAllJobs();
     const lastRun = await fetchLastRun();
 
-    const cityMap = new Map<string, { jobs: number; min: number; max: number; tier: string | null }>();
+    const cityMap = new Map<
+      string,
+      { jobs: number; min: number; max: number; tier: string | null }
+    >();
     const categories = new Map<string, number>();
     const workModes = new Map<string, number>();
     const skills = new Map<string, number>();

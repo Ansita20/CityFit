@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ApiPublicIngestJobsRouteImport } from './routes/api/public/ingest-jobs'
+import { Route as ApiPublicMatchCitiesRouteImport } from './routes/api/public/match-cities'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,50 @@ const ApiPublicIngestJobsRoute = ApiPublicIngestJobsRouteImport.update({
   path: '/api/public/ingest-jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicMatchCitiesRoute = ApiPublicMatchCitiesRouteImport.update({
+  id: '/api/public/match-cities',
+  path: '/api/public/match-cities',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/insights': typeof InsightsRoute
   '/api/public/ingest-jobs': typeof ApiPublicIngestJobsRoute
+  '/api/public/match-cities': typeof ApiPublicMatchCitiesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/insights': typeof InsightsRoute
   '/api/public/ingest-jobs': typeof ApiPublicIngestJobsRoute
+  '/api/public/match-cities': typeof ApiPublicMatchCitiesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/insights': typeof InsightsRoute
   '/api/public/ingest-jobs': typeof ApiPublicIngestJobsRoute
+  '/api/public/match-cities': typeof ApiPublicMatchCitiesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/insights' | '/api/public/ingest-jobs'
+  fullPaths:
+    '/' | '/insights' | '/api/public/ingest-jobs' | '/api/public/match-cities'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/insights' | '/api/public/ingest-jobs'
-  id: '__root__' | '/' | '/insights' | '/api/public/ingest-jobs'
+  to: '/' | '/insights' | '/api/public/ingest-jobs' | '/api/public/match-cities'
+  id:
+    | '__root__'
+    | '/'
+    | '/insights'
+    | '/api/public/ingest-jobs'
+    | '/api/public/match-cities'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InsightsRoute: typeof InsightsRoute
   ApiPublicIngestJobsRoute: typeof ApiPublicIngestJobsRoute
+  ApiPublicMatchCitiesRoute: typeof ApiPublicMatchCitiesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +98,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicIngestJobsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/match-cities': {
+      id: '/api/public/match-cities'
+      path: '/api/public/match-cities'
+      fullPath: '/api/public/match-cities'
+      preLoaderRoute: typeof ApiPublicMatchCitiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +112,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InsightsRoute: InsightsRoute,
   ApiPublicIngestJobsRoute: ApiPublicIngestJobsRoute,
+  ApiPublicMatchCitiesRoute: ApiPublicMatchCitiesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

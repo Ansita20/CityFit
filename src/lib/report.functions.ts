@@ -8,6 +8,7 @@ const ReportInput = z.object({
   fileName: z.string().trim().max(200).optional(),
   fileDataUrl: z.string().max(9_000_000).optional(),
   targetRoleOverride: z.string().trim().max(120).optional(),
+  homeCity: z.string().trim().max(120).optional(),
 });
 
 export const generateReport = createServerFn({ method: "POST" })
@@ -47,6 +48,7 @@ export const generateReport = createServerFn({ method: "POST" })
       skills: profile.skills,
       years: profile.years,
       targetRole: profile.targetRole,
+      homeCity: data.homeCity ?? null,
     });
 
     const { data: saved } = await supabaseAdmin

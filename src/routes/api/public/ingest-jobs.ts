@@ -56,14 +56,39 @@ export const Route = createFileRoute("/api/public/ingest-jobs")({
           .select("id")
           .maybeSingle();
 
+        const nowIso = new Date().toISOString();
         const rows = body.jobs.map((job) => {
-          const row: Record<string, string | number | null> = { source: "naukri-selenium" };
+          const row: Record<string, string | number | null> = {
+            source: "naukri-selenium",
+            scraped_at: nowIso,
+          };
           for (const [key, value] of Object.entries(job)) {
             row[key] = value === undefined ? null : value;
           }
           return row as never;
         });
         let inserted = 0;
+        let refreshed = 0;
+
+        // The jobs table's unique index is (company, role, location, min_experience,
+        // max_experience). A repost of the same listing hits that constraint on
+        // insert; without this fallback it was silently dropped, so re-scraping
+        // never refreshed `scraped_at` or the description/skills text for jobs
+        // that Naukri keeps reposting week to week.
+        const matchExisting = (row: Record<string, string | number | null>) => {
+          let query = supabaseAdmin.from("jobs").select("id").limit(1);
+          for (const column of [
+            "company",
+            "role",
+            "location",
+            "min_experience",
+            "max_experience",
+          ] as const) {
+            const value = row[column];
+            query = value == null ? query.is(column, null) : query.eq(column, value);
+          }
+          return query.maybeSingle();
+        };
 
         for (let i = 0; i < rows.length; i += 200) {
           const chunk = rows.slice(i, i + 200);
@@ -72,10 +97,28 @@ export const Route = createFileRoute("/api/public/ingest-jobs")({
             inserted += data?.length ?? 0;
             continue;
           }
-          // Duplicates in the batch: retry row by row and skip existing listings.
+          // Duplicates in the batch: retry row by row, refreshing existing listings.
           for (const row of chunk) {
             const single = await supabaseAdmin.from("jobs").insert(row).select("id");
-            if (!single.error) inserted += 1;
+            if (!single.error) {
+              inserted += 1;
+              continue;
+            }
+            const { data: existing } = await matchExisting(row);
+            if (!existing?.id) continue;
+            const { error: updateError } = await supabaseAdmin
+              .from("jobs")
+              .update({
+                job_description: row["job_description"] ?? null,
+                skills: row["skills"] ?? null,
+                key_skills: row["key_skills"] ?? null,
+                work_mode: row["work_mode"] ?? null,
+                tier: row["tier"] ?? null,
+                external_id: row["external_id"] ?? null,
+                scraped_at: nowIso,
+              })
+              .eq("id", existing.id);
+            if (!updateError) refreshed += 1;
           }
         }
 
@@ -90,7 +133,7 @@ export const Route = createFileRoute("/api/public/ingest-jobs")({
             .eq("id", run.id);
         }
 
-        return Response.json({ ok: true, received: rows.length, inserted });
+        return Response.json({ ok: true, received: rows.length, inserted, refreshed });
       },
     },
   },

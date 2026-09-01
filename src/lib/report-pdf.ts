@@ -91,11 +91,14 @@ export function downloadReportPdf(report: MatchReport, seniority?: string) {
   report.cities.forEach((city, i) => {
     room(90);
     text(`${i + 1}. ${city.city}`, { size: 12, bold: true, gap: 2 });
-    text(`${city.tier ?? "Tier n/a"} · ${city.totalJobs} total listings · ${city.matchingJobs} matches`, {
-      size: 9,
-      color: MUTED,
-      gap: 4,
-    });
+    text(
+      `${city.tier ?? "Tier n/a"} · ${city.totalJobs} total listings · ${city.matchingJobs} matches`,
+      {
+        size: 9,
+        color: MUTED,
+        gap: 4,
+      },
+    );
     text(
       `Roles inside your band: ${city.jobsInYourBand}/${city.matchingJobs} · typical experience ${city.avgMinExperience}-${city.avgMaxExperience} yrs · ${city.entryFriendlyShare}% open to 0-2 yrs`,
       { size: 9, gap: 4 },

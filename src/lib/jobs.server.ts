@@ -1,5 +1,7 @@
 import "@/lib/env.server";
 import { createClient } from "@supabase/supabase-js";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
 import type { Database } from "@/integrations/supabase/types";
 import type { JobRow, Profile } from "./matching";
 
@@ -56,55 +58,162 @@ export async function fetchLastRun() {
 export type ExtractedProfile = Profile & { fullName: string | null; seniority: string };
 
 const SKILL_KEYWORDS = [
+  // Languages
   "typescript",
   "javascript",
+  "python",
+  "java",
+  "c#",
+  "c++",
+  "golang",
+  "go",
+  "rust",
+  "php",
+  "ruby",
+  "swift",
+  "kotlin",
+  "scala",
+  "r",
+  "matlab",
+  "bash",
+  "shell scripting",
+  "html",
+  "css",
+  "sass",
+  "scss",
+  // Frontend
   "react",
   "next.js",
   "nextjs",
-  "node.js",
-  "nodejs",
-  "python",
-  "sql",
-  "postgres",
-  "postgresql",
-  "mongodb",
-  "docker",
-  "kubernetes",
-  "aws",
-  "gcp",
-  "azure",
-  "git",
-  "figma",
   "redux",
+  "vue",
+  "vue.js",
+  "angular",
+  "svelte",
   "tailwind",
   "tailwindcss",
+  "bootstrap",
+  "material ui",
+  "jquery",
+  "webpack",
+  "vite",
+  "figma",
+  "adobe xd",
+  "sketch",
+  "photoshop",
+  // Backend
+  "node.js",
+  "nodejs",
   "express",
   "django",
   "flask",
   "fastapi",
+  "spring",
+  "spring boot",
+  ".net",
+  "asp.net",
+  "laravel",
+  "ruby on rails",
+  "graphql",
+  "rest api",
+  "grpc",
+  "microservices",
+  // Data / ML
+  "sql",
+  "postgres",
+  "postgresql",
+  "mysql",
+  "sqlite",
+  "oracle",
+  "mongodb",
+  "redis",
+  "elasticsearch",
+  "dynamodb",
+  "cassandra",
+  "snowflake",
+  "bigquery",
+  "redshift",
   "pandas",
   "numpy",
   "scikit-learn",
+  "tensorflow",
+  "pytorch",
+  "keras",
+  "opencv",
+  "nlp",
   "machine learning",
+  "deep learning",
+  "computer vision",
   "data analysis",
   "data analytics",
+  "data visualization",
   "power bi",
   "tableau",
   "excel",
-  "java",
-  "spring",
-  "c#",
-  "c++",
-  "go",
-  "rust",
+  "spark",
+  "hadoop",
+  "hive",
+  "kafka",
+  "airflow",
+  "dbt",
+  "etl",
+  "sas",
+  // Cloud / DevOps
+  "aws",
+  "gcp",
+  "azure",
+  "docker",
+  "kubernetes",
+  "terraform",
+  "ansible",
+  "jenkins",
+  "github actions",
+  "ci/cd",
+  "linux",
+  "nginx",
+  "git",
+  // Mobile
+  "android",
+  "ios",
+  "flutter",
+  "react native",
+  // Testing
   "testing",
   "jest",
+  "mocha",
   "playwright",
   "cypress",
-  "rest api",
-  "graphql",
-  "microservices",
+  "selenium",
+  "junit",
+  // Tools / methodology
+  "jira",
+  "confluence",
+  "agile",
+  "scrum",
+  "salesforce",
+  "sap",
+  "servicenow",
+  "power automate",
+  "seo",
+  "google analytics",
+  "wordpress",
+  "shopify",
+  "firebase",
+  "supabase",
 ];
+
+const SKILL_ALIASES: Record<string, string> = {
+  golang: "Go",
+  "vue.js": "Vue",
+  ".net": ".NET",
+  "asp.net": "ASP.NET",
+};
+
+/** Whole-token match so short keywords like "go" or "r" don't fire on "google" or "director". */
+function containsToken(haystack: string, keyword: string) {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i").test(haystack);
+}
 
 const ROLE_KEYWORDS: Array<[string, string[]]> = [
   ["Data Analyst", ["data analyst", "analytics", "business intelligence", "bi analyst"]],
@@ -115,18 +224,48 @@ const ROLE_KEYWORDS: Array<[string, string[]]> = [
   ["DevOps Engineer", ["devops", "sre", "platform engineer", "kubernetes", "ci/cd"]],
   ["Product Manager", ["product manager", "product owner", "roadmap", "product strategy"]],
   ["Business Analyst", ["business analyst", "requirements", "stakeholder", "process analyst"]],
-  ["Software Engineer", ["software engineer", "software developer", "full stack", "fullstack", "developer"]],
+  [
+    "Software Engineer",
+    ["software engineer", "software developer", "full stack", "fullstack", "developer"],
+  ],
 ];
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9+#.\s/-]/g, " ");
 }
 
-function inferYears(text: string) {
+function inferYears(text: string): number {
   const normalized = normalizeText(text);
-  const matches = [...normalized.matchAll(/(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\s*(?:of)?\s*experience/g)];
-  const years = matches.map((match) => Number(match[1])).filter((value) => Number.isFinite(value));
-  return years.length ? Math.max(...years) : 0;
+
+  const explicit = [
+    ...normalized.matchAll(
+      /(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\s*(?:of)?\s*(?:relevant |total |overall )?exp(?:erience)?\b/g,
+    ),
+    ...normalized.matchAll(
+      /(?:total |overall )?exp(?:erience)?\s*(?:of|:)?\s*(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)/g,
+    ),
+  ];
+  const explicitYears = explicit
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0 && value <= 45);
+  if (explicitYears.length) return Math.max(...explicitYears);
+
+  // No explicit "X years experience" phrase — many resumes just list a work
+  // history instead. Fall back to the span since the earliest role still
+  // marked "present/current": an unambiguous signal it's an active job, not
+  // an education date range (which is almost never phrased as ongoing).
+  const MONTH = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
+  const presentRe = new RegExp(
+    `(?:(?:${MONTH})[a-z]*\\.?\\s+)?(\\d{4})\\s*(?:-|\\u2013|to)\\s*(?:present|current|now)\\b`,
+    "gi",
+  );
+  const currentYear = new Date().getFullYear();
+  const starts = [...normalized.matchAll(presentRe)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value >= 1980 && value <= currentYear);
+  if (starts.length) return Math.min(currentYear - Math.min(...starts), 45);
+
+  return 0;
 }
 
 function inferSeniority(years: number) {
@@ -137,18 +276,30 @@ function inferSeniority(years: number) {
   return "Lead";
 }
 
-function inferTargetRole(text: string, fileName?: string) {
+function inferTargetRole(text: string, fileName?: string): string {
   const haystack = normalizeText(`${fileName ?? ""} ${text}`);
-  for (const [role, keywords] of ROLE_KEYWORDS) {
-    if (keywords.some((keyword) => haystack.includes(keyword))) return role;
+
+  // A literal role title ("Backend Developer") beats one merely inferred from
+  // an associated skill keyword ("react") — otherwise a backend resume that
+  // happens to list React anywhere gets mislabeled as frontend.
+  for (const [role] of ROLE_KEYWORDS) {
+    if (containsToken(haystack, role.toLowerCase())) return role;
   }
-  return "Software Engineer";
+
+  let best: { role: string; score: number } | null = null;
+  for (const [role, keywords] of ROLE_KEYWORDS) {
+    const score = keywords.filter((keyword) => containsToken(haystack, keyword)).length;
+    if (score > 0 && (!best || score > best.score)) best = { role, score };
+  }
+  return best?.role ?? "Software Engineer";
 }
 
 function inferSkills(text: string) {
   const haystack = normalizeText(text);
-  const skills = SKILL_KEYWORDS.filter((keyword) => haystack.includes(keyword));
-  return [...new Set(skills)].slice(0, 30);
+  const skills = SKILL_KEYWORDS.filter((keyword) => containsToken(haystack, keyword)).map(
+    (keyword) => SKILL_ALIASES[keyword] ?? keyword,
+  );
+  return [...new Set(skills)].slice(0, 40);
 }
 
 function inferFullName(text: string) {
@@ -168,7 +319,10 @@ function inferFullName(text: string) {
   return null;
 }
 
-function inferProfile(input: { text?: string | undefined; fileName?: string | undefined }): ExtractedProfile {
+function inferProfile(input: {
+  text?: string | undefined;
+  fileName?: string | undefined;
+}): ExtractedProfile {
   const text = input.text ?? "";
   const years = inferYears(text);
   const skills = inferSkills(text);
@@ -183,18 +337,59 @@ function inferProfile(input: { text?: string | undefined; fileName?: string | un
   };
 }
 
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+async function textFromDataUrl(dataUrl: string): Promise<string> {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) return "";
+  const header = dataUrl.slice(5, commaIndex); // strip leading "data:"
+  const mime = header.split(";")[0] ?? "";
+  const isBase64 = header.includes(";base64");
+  const encoded = dataUrl.slice(commaIndex + 1);
+  const buffer = isBase64
+    ? Buffer.from(encoded, "base64")
+    : Buffer.from(decodeURIComponent(encoded), "utf8");
+
+  if (mime.startsWith("text/")) {
+    return buffer.toString("utf8");
+  }
+
+  if (mime === "application/pdf") {
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      return result.text;
+    } finally {
+      await parser.destroy();
+    }
+  }
+
+  if (mime === DOCX_MIME) {
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value;
+  }
+
+  // Legacy .doc (application/msword) has no reliable pure-JS parser here.
+  return "";
+}
+
 export async function extractProfileFromResume(input: {
   text?: string | undefined;
   fileName?: string | undefined;
   fileDataUrl?: string | undefined;
 }): Promise<ExtractedProfile> {
   let text = input.text ?? "";
-  if (!text && input.fileDataUrl?.startsWith("data:text/")) {
-    const commaIndex = input.fileDataUrl.indexOf(",");
-    if (commaIndex >= 0) {
-      const encoded = input.fileDataUrl.slice(commaIndex + 1);
-      const isBase64 = input.fileDataUrl.slice(0, commaIndex).includes(";base64");
-      text = isBase64 ? Buffer.from(encoded, "base64").toString("utf8") : decodeURIComponent(encoded);
+  if (!text && input.fileDataUrl) {
+    try {
+      text = await textFromDataUrl(input.fileDataUrl);
+    } catch (error) {
+      console.error("[resume] failed to extract text from uploaded file:", error);
+      text = "";
+    }
+    if (text.trim().length < 40) {
+      throw new Error(
+        "We couldn't read text from that file — it may be a scanned image, password-protected, or an older .doc format. Please try a PDF/DOCX export or paste your resume text instead.",
+      );
     }
   }
 
